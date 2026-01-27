@@ -9,21 +9,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Deps
-        run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev git openssl
+        run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev openssl
       - name: Build
         env:
           SIGNING_PUBLIC_KEY_PEM: ${{ secrets.SIGNING_PUBLIC_KEY_PEM }}
         run: cargo build --release
+      - name: Verify Ternary Version Consistency
+        run: |
+          BINARY_OUTPUT=$(./target/release/binary-encrypter --version 2>&1 || echo 'EXEC_FAILED')
+          BINARY_VER=$(echo "$BINARY_OUTPUT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          CARGO_VER="0.1.0"
+          TAG_NAME="${{ github.ref_name }}"
+          TAG_VER=${TAG_NAME#v}
+
+          echo "Verifying: Binary ($BINARY_VER) == Cargo ($CARGO_VER) == Tag ($TAG_VER)"
+
+          if [ -z "$BINARY_VER" ] || [ "$BINARY_VER" != "$CARGO_VER" ] || [ "$BINARY_VER" != "$TAG_VER" ]; then
+            echo "ERROR: VERSION MISMATCH DETECTED"
+            exit 1
+          fi
       - name: Sign and Hash Binary
         run: |
           cd target/release
           sha512sum binary-encrypter > binary-encrypter.sha512
           echo "${{ secrets.SIGNING_PRIVATE_KEY_B64 }}" | openssl base64 -d -A > priv.pem
-          openssl dgst -sha256 -sign priv.pem \
-            -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-1 \
-            -out binary-encrypter.sig \
-            binary-encrypter
+          openssl dgst -sha256 -sign priv.pem -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-1 -out binary-encrypter.sig binary-encrypter
           rm priv.pem
       - name: Create Release
         env:
