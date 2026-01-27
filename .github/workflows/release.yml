@@ -20,7 +20,7 @@ jobs:
       - name: Verify Ternary Version Consistency
         run: |
           # 1. Get version from Compiled Binary
-          BINARY_OUTPUT=$(./target/release/binary-encrypter --version 2>&1 || echo 'EXEC_FAILED')
+          BINARY_OUTPUT=$(./target/release/binary_encrypter --version 2>&1 || echo 'EXEC_FAILED')
           BINARY_VER=$(echo "$BINARY_OUTPUT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
           
           # 2. Get version from Cargo.toml (Dynamic extraction in runner)
@@ -45,16 +45,16 @@ jobs:
       - name: Sign and Hash Binary
         run: |
           cd target/release
-          sha512sum binary-encrypter > binary-encrypter.sha512
+          sha512sum binary_encrypter > binary_encrypter.sha512
           echo "${{ secrets.SIGNING_PRIVATE_KEY_B64 }}" | openssl base64 -d -A > priv.pem
-          openssl dgst -sha256 -sign priv.pem -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-1 -out binary-encrypter.sig binary-encrypter
+          openssl dgst -sha256 -sign priv.pem -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-1 -out binary_encrypter.sig binary_encrypter
           rm priv.pem
       - name: Create Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create ${{ github.ref_name }} \
-            target/release/binary-encrypter \
-            target/release/binary-encrypter.sig \
-            target/release/binary-encrypter.sha512 \
+            target/release/binary_encrypter \
+            target/release/binary_encrypter.sig \
+            target/release/binary_encrypter.sha512 \
             --generate-notes
