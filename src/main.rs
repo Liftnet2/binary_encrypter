@@ -1,7 +1,7 @@
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
 use clap::Parser;
 use rsa::{Oaep, RsaPublicKey, pkcs8::DecodePublicKey};
-use sha2::Sha256;
+use sha2::Sha512;
 use std::{fs, io::Write, path::PathBuf};
 
 // Include the generated VERSION_STRING and other metadata from build.rs
@@ -50,7 +50,7 @@ fn main() -> anyhow::Result<()> {
 
     // 4. Wrap AES Key with RSA-OAEP
     let encrypted_aes_key = public_key
-        .encrypt(&mut rng, Oaep::new::<Sha256>(), aes_key.as_slice())
+        .encrypt(&mut rng, Oaep::new::<Sha512>(), aes_key.as_slice())
         .map_err(|e| anyhow::anyhow!("RSA key wrap failure: {e}"))?;
 
     // 5. Write binary package
