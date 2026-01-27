@@ -1,0 +1,36 @@
+name: Release
+on:
+  push:
+    tags: [v*]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deps
+        run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev git openssl
+      - name: Build
+        env:
+          SIGNING_PUBLIC_KEY_PEM: ${{ secrets.SIGNING_PUBLIC_KEY_PEM }}
+        run: cargo build --release
+      - name: Sign and Hash Binary
+        run: |
+          cd target/release
+          sha512sum binary-encrypter > binary-encrypter.sha512
+          echo "${{ secrets.SIGNING_PRIVATE_KEY_B64 }}" | openssl base64 -d -A > priv.pem
+          openssl dgst -sha256 -sign priv.pem \
+            -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:-1 \
+            -out binary-encrypter.sig \
+            binary-encrypter
+          rm priv.pem
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            target/release/binary-encrypter \
+            target/release/binary-encrypter.sig \
+            target/release/binary-encrypter.sha512 \
+            --generate-notes
