@@ -1,0 +1,11 @@
+[package]
+name = "binary-encrypter"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aes-gcm = "0.10.3"
+rsa = { version = "0.9.10", features = ["pem"] }
+rand = "0.8.5"
+sha2 = "0.10.9"
+anyhow = "1.0.100"
