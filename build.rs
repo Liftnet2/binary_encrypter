@@ -29,12 +29,9 @@ fn get_git_version() -> Result<(u32, u32, u32, String), Box<dyn std::error::Erro
     let latest_tag_str = tags_stdout
         .lines()
         .next()
-        .ok_or("No git tags found matching v*.*.*")?
-        .trim();
-
-    if latest_tag_str.is_empty() {
-        return Err("Latest git tag string is empty".into());
-    }
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("v0.0.0");
 
     // 2. Parse the tag (e.g., "v1.2.25")
     // Regex: starts with 'v', then digits for major, minor, revision
