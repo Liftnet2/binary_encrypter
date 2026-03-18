@@ -19,29 +19,21 @@ jobs:
         run: cargo build --release
       - name: Verify Ternary Version Consistency
         run: |
-          # 1. Get version from Compiled Binary
           BINARY_OUTPUT=$(./target/release/binary_encrypter --version 2>&1 || echo 'EXEC_FAILED')
+          # Extract version (e.g. 1.0.0) from output like 'binary_encrypter v1.0.0'
           BINARY_VER=$(echo "$BINARY_OUTPUT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
           
-          # 2. Get version from Cargo.toml (Dynamic extraction in runner)
+          # Dynamic extraction of Cargo.toml version
           CARGO_VER=$(grep "^version =" Cargo.toml | head -1 | cut -d '"' -f 2)
           
-          # 3. Get version from GitHub Tag
           TAG_NAME="${{ github.ref_name }}"
           TAG_VER=${TAG_NAME#v}
 
           echo "Verifying: Binary ($BINARY_VER) == Cargo ($CARGO_VER) == Tag ($TAG_VER)"
 
           if [ -z "$BINARY_VER" ] || [ "$BINARY_VER" != "$CARGO_VER" ] || [ "$BINARY_VER" != "$TAG_VER" ]; then
-            echo "------------------------------------------------"
-            echo "ERROR: VERSION MISMATCH DETECTED"
-            echo "Binary reported: $BINARY_VER"
-            echo "Cargo.toml has:  $CARGO_VER"
-            echo "Git Tag was:     $TAG_NAME"
-            echo "------------------------------------------------"
-            exit 1
+            echo "ERROR: Version Mismatch"; exit 1
           fi
-          echo "Ternary Version Check Passed!"
       - name: Sign and Hash Binary
         run: |
           cd target/release

@@ -16,6 +16,7 @@ jobs:
       - name: Install nightly Rust
         uses: dtolnay/rust-toolchain@nightly
         with:
+          toolchain: nightly-2025-06-19
           components: rustfmt, clippy
 
       - name: Install system dependencies
