@@ -1,0 +1,10 @@
+--local-repository Liftnet2/gh-actions@v1=/Users/pittengermdp/development/ln2_workspace/.github/actions
+--secret-file=/Users/pittengermdp/development/ln2_workspace/.secrets
+
+--container-architecture linux/arm64
+
+--no-cache-server
+
+-P ubuntu-latest-8-cores=catthehacker/ubuntu:act-latest
+-P macos-latest-large=node:16-buster-slim
+-P windows-latest-8-cores=node:16-buster-slim
