@@ -6,7 +6,7 @@ permissions:
   contents: write
 jobs:
   release:
-    runs-on: ubuntu-latest-8-cores
+    runs-on: Pilot_Linux
     steps:
       - uses: actions/checkout@v4
         with:
