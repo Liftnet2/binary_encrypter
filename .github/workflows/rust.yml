@@ -1,8 +1,28 @@
 on: [push, pull_request]
 name: Rust [binary_encrypter]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_BUILD_JOBS: "8"
+  RUST_TEST_THREADS: "8"
+  SIGNING_PUBLIC_KEY_PEM: ${{ secrets.SIGNING_PUBLIC_KEY_PEM }}
+
 jobs:
   ci:
-    uses: Liftnet2/gh-actions/.github/workflows/rust-ci.yml@v1
-    with:
-      extra-system-deps: 'cmake clang pkg-config libssl-dev openssl'
-    secrets: inherit
+    runs-on: Pilot_Linux
+    env:
+      ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+    steps:
+      - run: |
+          git config --global url."https://oauth2:${ACCESS_TOKEN}@github.com".insteadOf https://github.com
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Install System Dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev openssl
+
+      - uses: Liftnet2/gh-actions/rust-ci@v1
