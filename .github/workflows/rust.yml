@@ -1,37 +1,8 @@
 on: [push, pull_request]
-
 name: Rust [binary_encrypter]
-
 jobs:
   ci:
-    runs-on: Pilot_Linux
-    env:
-      ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-
-    steps:
-      - run: |
-          git config --global url."https://oauth2:${ACCESS_TOKEN}@github.com".insteadOf https://github.com
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install nightly Rust
-        uses: dtolnay/rust-toolchain@nightly
-        with:
-          toolchain: nightly-2025-06-19
-          components: rustfmt, clippy
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev openssl
-
-      - name: Build
-        run: cargo build
-
-      - name: Test
-        run: cargo test
-
-      - name: Fmt
-        run: cargo fmt --all -- --check
-
-      - name: Clippy
-        run: cargo clippy --all --tests -- -W clippy::all -W clippy::pedantic -W clippy::nursery -A clippy::multiple_crate_versions -D warnings
+    uses: Liftnet2/gh-actions/.github/workflows/rust-ci.yml@v1
+    with:
+      extra-system-deps: 'cmake clang pkg-config libssl-dev openssl'
+    secrets: inherit
