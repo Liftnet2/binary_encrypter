@@ -1,0 +1,91 @@
+# GitHub Actions workflow template for projects using binary_encrypter.
+# Copy this to your project's .github/workflows/release.yml and customize
+# the variables marked with TODO.
+#
+# This workflow:
+#   1. Builds your project on tag push (v*)
+#   2. Prepares a release directory with binary + hook scripts
+#   3. Uses binary_encrypter bundle to create an encrypted, signed, manifest-
+#      verified release package with per-file SHA-512 hashes
+#   4. Uploads the .enc and .sha512 to a GitHub release
+#
+# Required GitHub secrets:
+#   SIGNING_PRIVATE_KEY_B64   — Base64-encoded RSA-3072 signing private key
+#   ENCRYPTION_PUBLIC_KEY_B64 — Base64-encoded RSA-3072 encryption public key
+
+name: Release
+on:
+  push:
+    tags: [v*]
+permissions:
+  contents: write
+
+env:
+  # TODO: Change these to match your project
+  BINARY_NAME: vts # Name of your compiled binary
+  CARGO_TARGET: release # Cargo build profile
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang pkg-config libssl-dev openssl
+
+      - name: Build project
+        run: cargo build --release
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download binary_encrypter
+        run: |
+          gh release download --repo Liftnet2/binary_encrypter \
+            --pattern "binary_encrypter" --output binary_encrypter
+          chmod +x binary_encrypter
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare release directory
+        run: |
+          mkdir -p release_staging
+          cp target/release/${{ env.BINARY_NAME }} release_staging/
+          # TODO: Copy your hook scripts if they exist
+          # cp scripts/pre_install.sh release_staging/ 2>/dev/null || true
+          # cp scripts/install.sh release_staging/ 2>/dev/null || true
+          # cp scripts/post_install.sh release_staging/ 2>/dev/null || true
+
+      - name: Decode keys
+        run: |
+          echo "${{ secrets.ENCRYPTION_PUBLIC_KEY_B64 }}" | openssl base64 -d -A > enc_pub.pem
+          echo "${{ secrets.SIGNING_PRIVATE_KEY_B64 }}" | openssl base64 -d -A > sign_priv.pem
+
+      - name: Bundle encrypted release
+        run: |
+          ./binary_encrypter bundle \
+            --directory release_staging \
+            --version "${{ steps.version.outputs.version }}" \
+            --binary-name "${{ env.BINARY_NAME }}" \
+            --key enc_pub.pem \
+            --signing-key sign_priv.pem \
+            --output "${{ env.BINARY_NAME }}.enc"
+
+      - name: Cleanup keys
+        if: always()
+        run: rm -f enc_pub.pem sign_priv.pem
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ github.ref_name }} \
+            "${{ env.BINARY_NAME }}.enc" \
+            "${{ env.BINARY_NAME }}.enc.sha512" \
+            --generate-notes

@@ -1,0 +1,14 @@
+# Copy this file to .actrc (gitignored) and fill in the absolute path to your ln2_workspace.
+# .actrc is machine-specific and must NOT be committed.
+#
+# Usage:
+#   cp .actrc.template .actrc
+#   # Edit .actrc and replace /ABSOLUTE/PATH/TO/ln2_workspace with your actual path
+#   act push -n -j ci  # dry-run to verify local action resolution
+
+--local-repository Liftnet2/gh-actions@v1=/ABSOLUTE/PATH/TO/ln2_workspace/.github/actions
+--secret-file=/ABSOLUTE/PATH/TO/ln2_workspace/.secrets
+
+--container-architecture linux/arm64
+
+--no-cache-server

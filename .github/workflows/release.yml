@@ -22,10 +22,10 @@ jobs:
           BINARY_OUTPUT=$(./target/release/binary_encrypter --version 2>&1 || echo 'EXEC_FAILED')
           # Extract version (e.g. 1.0.0) from output like 'binary_encrypter v1.0.0'
           BINARY_VER=$(echo "$BINARY_OUTPUT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-          
+
           # Dynamic extraction of Cargo.toml version
           CARGO_VER=$(grep "^version =" Cargo.toml | head -1 | cut -d '"' -f 2)
-          
+
           TAG_NAME="${{ github.ref_name }}"
           TAG_VER=${TAG_NAME#v}
 

@@ -1,8 +1,12 @@
-use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
+use binary_encrypter::{SINGLE_SHOT_LIMIT, encrypt_to_writer};
 use clap::Parser;
-use rsa::{Oaep, RsaPublicKey, pkcs8::DecodePublicKey};
-use sha2::Sha512;
-use std::{fs, io::Write, path::PathBuf};
+use rsa::{RsaPublicKey, pkcs8::DecodePublicKey};
+use std::{
+    fs,
+    io::{BufReader, BufWriter, Read, Write},
+    path::PathBuf,
+};
+use tracing::debug;
 
 // Include the generated VERSION_STRING and other metadata from build.rs
 include!(concat!(env!("OUT_DIR"), "/version_generated.rs"));
@@ -25,42 +29,61 @@ struct Args {
 }
 
 fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+
     let args = Args::parse();
 
     // 1. Load RSA Public Key
+    debug!(path = %args.key.display(), "Reading RSA public key");
     let pem = fs::read_to_string(&args.key)
         .map_err(|e| anyhow::anyhow!("Failed to read public key: {e}"))?;
     let public_key = RsaPublicKey::from_public_key_pem(&pem)
         .map_err(|e| anyhow::anyhow!("Failed to parse RSA public key: {e}"))?;
 
-    // 2. Prepare AES-256-GCM
+    debug!("RSA public key parsed");
+
+    // 2. Read input file via BufReader.
+    //    For files ≤ SINGLE_SHOT_LIMIT the data fits comfortably in RAM.
+    //    For larger files we also read fully — see lib.rs doc comment for the
+    //    rationale (aes-gcm 0.10.x does not support streaming AEAD).
+    debug!(path = %args.input.display(), "Reading input file");
+    let input_file = fs::File::open(&args.input)
+        .map_err(|e| anyhow::anyhow!("Failed to open input file: {e}"))?;
+    let file_size = input_file.metadata().map_or(0, |m| m.len());
+    if file_size > SINGLE_SHOT_LIMIT {
+        tracing::warn!(
+            file_size,
+            limit = SINGLE_SHOT_LIMIT,
+            "Input file exceeds single-shot limit; reading fully into memory (aes-gcm 0.10.x limitation)"
+        );
+    }
+    let mut reader = BufReader::new(input_file);
+    let mut file_data = Vec::with_capacity(usize::try_from(file_size).unwrap_or(0));
+    reader
+        .read_to_end(&mut file_data)
+        .map_err(|e| anyhow::anyhow!("Failed to read input file: {e}"))?;
+
+    debug!(bytes = file_data.len(), "Input file read");
+
+    // 3. Encrypt and write output via BufWriter.
+    debug!(path = %args.output.display(), "Opening output file");
+    let out_file = fs::File::create(&args.output)
+        .map_err(|e| anyhow::anyhow!("Failed to create output file: {e}"))?;
+    let mut writer = BufWriter::new(out_file);
+
     let mut rng = rand::thread_rng();
-    let aes_key = Aes256Gcm::generate_key(&mut rng);
-    let nonce_bytes = rand::random::<[u8; 12]>();
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    encrypt_to_writer(&file_data, &public_key, &mut rng, &mut writer)?;
 
-    // 3. Encrypt File Data
-    let file_data =
-        fs::read(&args.input).map_err(|e| anyhow::anyhow!("Failed to read input file: {e}"))?;
+    // Flush the BufWriter explicitly so write errors surface here.
+    writer
+        .flush()
+        .map_err(|e| anyhow::anyhow!("Failed to flush output: {e}"))?;
 
-    let cipher = Aes256Gcm::new(&aes_key);
-    let ciphertext = cipher
-        .encrypt(nonce, file_data.as_ref())
-        .map_err(|e| anyhow::anyhow!("AES encryption failure: {e}"))?;
-
-    // 4. Wrap AES Key with RSA-OAEP
-    let encrypted_aes_key = public_key
-        .encrypt(&mut rng, Oaep::new::<Sha512>(), aes_key.as_slice())
-        .map_err(|e| anyhow::anyhow!("RSA key wrap failure: {e}"))?;
-
-    // 5. Write binary package
-    // Format: [KeyLen (4b)][EncKey][Nonce (12b)][Ciphertext]
-    let mut out = fs::File::create(&args.output)?;
-    out.write_all(&u32::try_from(encrypted_aes_key.len())?.to_be_bytes())?;
-    out.write_all(&encrypted_aes_key)?;
-    out.write_all(&nonce_bytes)?;
-    out.write_all(&ciphertext)?;
-
-    println!("Successfully encrypted to {}", args.output.display());
+    tracing::info!(output = %args.output.display(), "Successfully encrypted");
     Ok(())
 }
