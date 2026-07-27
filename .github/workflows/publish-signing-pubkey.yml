@@ -1,0 +1,41 @@
+name: Publish Signing Public Key
+# Derive the PUBLIC half of the release signing key and publish it as an
+# artifact.
+#
+# GitHub secrets cannot be read back, so when the trust anchor a consumer pins
+# (e.g. vts's vars.BINARY_ENCRYPTER_PUB_KEY) drifts out of sync with the key CI
+# actually signs with, there is otherwise no way to recover the correct value
+# short of re-rotating the key. This job closes that gap.
+#
+# Only the public half ever leaves the runner: `openssl pkey -pubout` reads the
+# private key on stdin and writes a public key. The private key is never written
+# to disk and never printed.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  publish-pubkey:
+    # ubuntu-latest: this repo is public, and the Pilot_Linux org runner group
+    # refuses public repositories.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Derive the signing public key
+        run: |
+          echo "${{ secrets.SIGNING_PRIVATE_KEY_B64 }}" \
+            | openssl base64 -d -A \
+            | openssl pkey -pubout -out signing_public.pem
+          test -s signing_public.pem
+          openssl pkey -pubin -in signing_public.pem -noout
+          echo "Fingerprint (sha256 of the modulus):"
+          openssl pkey -pubin -in signing_public.pem -noout -modulus | sha256sum
+          echo "This is the value to store in vts's BINARY_ENCRYPTER_PUB_KEY:"
+          cat signing_public.pem
+
+      - name: Upload the public key
+        uses: actions/upload-artifact@v4
+        with:
+          name: signing-public-key
+          path: signing_public.pem
