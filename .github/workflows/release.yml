@@ -6,7 +6,11 @@ permissions:
   contents: write
 jobs:
   release:
-    runs-on: Pilot_Linux
+    # ubuntu-latest, not the Pilot_Linux org runner: this repo is public and the
+    # org runner group refuses public repos, so a self-hosted job sits queued
+    # forever and is never picked up. rust.yml was moved for exactly this reason
+    # in f9ab65a; this workflow was missed at the time.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
