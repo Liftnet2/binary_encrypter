@@ -35,7 +35,7 @@ jobs:
           cat signing_public.pem
 
       - name: Upload the public key
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: signing-public-key
           path: signing_public.pem
