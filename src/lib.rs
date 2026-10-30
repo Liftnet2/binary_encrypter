@@ -4,6 +4,16 @@ pub const FORMAT_MAGIC: [u8; 4] = *b"LNEC";
 /// Current wire-format version.
 pub const FORMAT_VERSION: u8 = 0x01;
 
+/// Smallest and largest plausible RSA-OAEP wrapped-key length, in bytes:
+/// 1024-bit through 8192-bit moduli.
+///
+/// [`decrypt_from_reader`] checks the length field against this range BEFORE it
+/// allocates, because the field comes from four bytes of an artifact nothing
+/// has authenticated yet: without a bound, a hostile `0xFFFF_FFFF` becomes a
+/// 4 GiB `vec![0u8; key_len]`. `binary_updater::crypto::WRAPPED_KEY_LEN` uses
+/// the same range and the two MUST agree.
+pub const WRAPPED_KEY_LEN: std::ops::RangeInclusive<usize> = 128..=1024;
+
 /// Threshold below which the entire file is read into memory in one shot.
 ///
 /// Files above this size are also read fully before encryption because
@@ -143,6 +153,14 @@ pub fn decrypt_from_reader<R: Read>(
         .context("Failed to read key length")?;
     let key_len =
         usize::try_from(u32::from_be_bytes(len_bytes)).context("Key length overflows usize")?;
+    if !WRAPPED_KEY_LEN.contains(&key_len) {
+        bail!(
+            "Wrapped key length {key_len} is outside the plausible range {}..={}; \
+             refusing to allocate from an unauthenticated header",
+            WRAPPED_KEY_LEN.start(),
+            WRAPPED_KEY_LEN.end()
+        );
+    }
 
     // Read encrypted AES key.
     let mut enc_aes_key = vec![0u8; key_len];

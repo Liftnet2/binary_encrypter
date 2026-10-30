@@ -117,6 +117,71 @@ fn truncated_input_fails_cleanly() {
     }
 }
 
+/// The wrapped-key length comes from an unauthenticated header, so it is
+/// bounded BEFORE anything is allocated from it.
+///
+/// `vec![0u8; 4 GiB]` is a lazy zero-page allocation on 64-bit, so "did not run
+/// out of memory" proves nothing here. What distinguishes the fixed code is
+/// WHICH error it reports: the unbounded decrypt went on to fail later with a
+/// read error ("Failed to read encrypted AES key").
+#[test]
+fn absurd_key_len_is_rejected_before_allocation() {
+    let priv_key = RsaPrivateKey::new(&mut rand::thread_rng(), 2048).expect("keygen failed");
+
+    let header = |key_len: u32| {
+        let mut out = FORMAT_MAGIC.to_vec();
+        out.push(FORMAT_VERSION);
+        out.extend_from_slice(&key_len.to_be_bytes());
+        // Plenty of bytes so truncation cannot be the reason for the error.
+        out.extend_from_slice(&[0u8; 2048]);
+        out
+    };
+
+    for key_len in [u32::MAX, 1 << 20, 1025, 127, 16, 0] {
+        let err = decrypt_bytes(&header(key_len), &priv_key)
+            .expect_err("an out-of-range key length must be rejected");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("outside the plausible range 128..=1024"),
+            "key_len {key_len}: unexpected error: {msg}"
+        );
+    }
+}
+
+/// Both bounds are INSIDE the range: they must pass the length gate and fail
+/// later, at the RSA unwrap. This proves the bound is not off by one.
+#[test]
+fn key_len_at_the_bounds_passes_the_length_gate() {
+    let priv_key = RsaPrivateKey::new(&mut rand::thread_rng(), 2048).expect("keygen failed");
+
+    for key_len in [128usize, 1024] {
+        let mut data = FORMAT_MAGIC.to_vec();
+        data.push(FORMAT_VERSION);
+        data.extend_from_slice(&u32::try_from(key_len).unwrap().to_be_bytes());
+        data.extend_from_slice(&vec![7u8; key_len]);
+        data.extend_from_slice(&[0u8; 12]);
+        data.extend_from_slice(&[0u8; 32]);
+        let err = decrypt_bytes(&data, &priv_key).expect_err("filler is not a valid wrapped key");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("RSA key unwrap failed"),
+            "key_len {key_len}: expected to reach the RSA unwrap, got: {msg}"
+        );
+    }
+}
+
+/// A real artifact's wrapped key is always inside the range, for every key size
+/// the fleet could plausibly use.
+#[test]
+fn real_wrapped_keys_are_within_the_bound() {
+    use binary_encrypter::WRAPPED_KEY_LEN;
+    let (_priv, pub_key) = generate_keypair();
+    let artifact = encrypt_bytes(b"x", &pub_key);
+    // Header is 4 (magic) + 1 (version); the next 4 bytes are the length.
+    let len = u32::from_be_bytes(artifact[5..9].try_into().unwrap()) as usize;
+    assert!(WRAPPED_KEY_LEN.contains(&len), "wrapped key of {len} bytes");
+}
+
 /// Encrypting the same plaintext twice must yield different ciphertext because
 /// a fresh nonce is generated each time.
 #[test]
