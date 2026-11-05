@@ -13,7 +13,37 @@ env:
   SIGNING_PUBLIC_KEY_PEM: ${{ secrets.SIGNING_PUBLIC_KEY_PEM }}
 
 jobs:
-  ci:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+    steps:
+      - run: |
+          git config --global url."https://oauth2:${ACCESS_TOKEN}@github.com".insteadOf https://github.com
+
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install System Dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake clang pkg-config libssl-dev openssl
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: nightly-2026-03-30
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all --tests -- -W clippy::all -W clippy::nursery -W clippy::pedantic -D warnings
+
+  unit-tests:
     runs-on: ubuntu-latest
     env:
       ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
@@ -39,12 +69,6 @@ jobs:
 
       - name: Build
         run: cargo build
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run clippy
-        run: cargo clippy --all --tests -- -W clippy::all -W clippy::nursery -W clippy::pedantic -D warnings
 
       - name: Run tests
         run: cargo test
